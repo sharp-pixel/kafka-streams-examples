@@ -33,156 +33,156 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 public class EndToEndTest extends MicroserviceTestUtils {
 
-  private static final Logger log = LoggerFactory.getLogger(EndToEndTest.class);
-  private static final String HOST = "localhost";
-  private List<Service> services = new ArrayList<>();
-  private static int restPort;
-  private OrderBean returnedBean;
-  private long startTime;
-  private Paths path;
-  private Client client;
+    private static final Logger log = LoggerFactory.getLogger(EndToEndTest.class);
+    private static final String HOST = "localhost";
+    private List<Service> services = new ArrayList<>();
+    private static int restPort;
+    private OrderBean returnedBean;
+    private long startTime;
+    private Paths path;
+    private Client client;
 
-  @Test
-  public void shouldCreateNewOrderAndGetBackValidatedOrder() throws Exception {
-    OrderBean inputOrder = new OrderBean(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
-    client = getClient();
+    @Test
+    public void shouldCreateNewOrderAndGetBackValidatedOrder() throws Exception {
+        OrderBean inputOrder = new OrderBean(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
+        client = getClient();
 
-    //Add inventory required by the inventory service with enough items in stock to pass validation
-    List<KeyValue<Product, Integer>> inventory = asList(
-        new KeyValue<>(UNDERPANTS, 75),
-        new KeyValue<>(JUMPERS, 10)
-    );
-    sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
+        //Add inventory required by the inventory service with enough items in stock to pass validation
+        List<KeyValue<Product, Integer>> inventory = asList(
+                new KeyValue<>(UNDERPANTS, 75),
+                new KeyValue<>(JUMPERS, 10)
+        );
+        sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
 
-    //When we POST order and immediately GET on the returned location
-    client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
-    returnedBean = client.target(path.urlGetValidated(1)).queryParam("timeout", MIN)
-        .request(APPLICATION_JSON_TYPE).get(newBean());
+        //When we POST order and immediately GET on the returned location
+        client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
+        returnedBean = client.target(path.urlGetValidated(1)).queryParam("timeout", MIN)
+                .request(APPLICATION_JSON_TYPE).get(newBean());
 
-    //Then
-    assertThat(returnedBean.getState()).isEqualTo(OrderState.VALIDATED);
-  }
-
-  @Test
-  public void shouldProcessManyValidOrdersEndToEnd() throws Exception {
-    client = getClient();
-
-    //Add inventory required by the inventory service
-    List<KeyValue<Product, Integer>> inventory = asList(
-        new KeyValue<>(UNDERPANTS, 75),
-        new KeyValue<>(JUMPERS, 10)
-    );
-    sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
-
-    //Send ten orders in succession
-    for (int i = 0; i < 10; i++) {
-      OrderBean inputOrder = new OrderBean(id(i), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
-
-      startTimer();
-
-      //POST & GET order
-      client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
-      returnedBean = client.target(path.urlGetValidated(i)).queryParam("timeout", MIN)
-          .request(APPLICATION_JSON_TYPE).get(newBean());
-
-      endTimer();
-
-      assertThat(returnedBean).isEqualTo(new OrderBean(
-          inputOrder.getId(),
-          inputOrder.getCustomerId(),
-          OrderState.VALIDATED,
-          inputOrder.getProduct(),
-          inputOrder.getQuantity(),
-          inputOrder.getPrice()
-      ));
-    }
-  }
-
-  @Test
-  public void shouldProcessManyInvalidOrdersEndToEnd() throws Exception {
-    client = getClient();
-
-    //Add inventory required by the inventory service
-    List<KeyValue<Product, Integer>> inventory = asList(
-        new KeyValue<>(UNDERPANTS, 75000),
-        new KeyValue<>(JUMPERS, 0) //***nothing in stock***
-    );
-    sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
-
-    //Send ten orders one after the other
-    for (int i = 0; i < 10; i++) {
-      OrderBean inputOrder = new OrderBean(id(i), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
-
-      startTimer();
-
-      //POST & GET order
-      client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
-      returnedBean = client.target(path.urlGetValidated(i)).queryParam("timeout", MIN)
-          .request(APPLICATION_JSON_TYPE).get(newBean());
-
-      endTimer();
-
-      assertThat(returnedBean).isEqualTo(new OrderBean(
-          inputOrder.getId(),
-          inputOrder.getCustomerId(),
-          OrderState.FAILED,
-          inputOrder.getProduct(),
-          inputOrder.getQuantity(),
-          inputOrder.getPrice()
-      ));
-    }
-  }
-
-  private Client getClient() {
-    final ClientConfig clientConfig = new ClientConfig();
-    clientConfig.property(ClientProperties.CONNECT_TIMEOUT, 60000)
-        .property(ClientProperties.READ_TIMEOUT, 60000);
-    return ClientBuilder.newClient(clientConfig);
-  }
-
-  private void startTimer() {
-    startTime = System.currentTimeMillis();
-  }
-
-  private void endTimer() {
-    log.info("Took: " + (System.currentTimeMillis() - startTime));
-  }
-
-  @Before
-  public void startEverythingElse() throws Exception {
-    if (!CLUSTER.isRunning()) {
-      CLUSTER.start();
+        //Then
+        assertThat(returnedBean.getState()).isEqualTo(OrderState.VALIDATED);
     }
 
-    Topics.ALL.keySet().forEach(CLUSTER::createTopic);
-    Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
+    @Test
+    public void shouldProcessManyValidOrdersEndToEnd() throws Exception {
+        client = getClient();
 
-    services.add(new FraudService());
-    services.add(new InventoryService());
-    services.add(new OrderDetailsService());
-    services.add(new ValidationsAggregatorService());
+        //Add inventory required by the inventory service
+        List<KeyValue<Product, Integer>> inventory = asList(
+                new KeyValue<>(UNDERPANTS, 75),
+                new KeyValue<>(JUMPERS, 10)
+        );
+        sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
 
-    tailAllTopicsToConsole(CLUSTER.bootstrapServers());
-    services.forEach(s -> s.start(CLUSTER.bootstrapServers()));
+        //Send ten orders in succession
+        for (int i = 0; i < 10; i++) {
+            OrderBean inputOrder = new OrderBean(id(i), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
 
-    final OrdersService ordersService = new OrdersService(HOST, restPort);
-    ordersService.start(CLUSTER.bootstrapServers());
-    path = new Paths("localhost", ordersService.port());
-    services.add(ordersService);
-  }
+            startTimer();
 
-  @After
-  public void tearDown() throws Exception {
-    services.forEach(Service::stop);
-    stopTailers();
-    CLUSTER.stop();
-    if (client != null) {
-      client.close();
+            //POST & GET order
+            client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
+            returnedBean = client.target(path.urlGetValidated(i)).queryParam("timeout", MIN)
+                    .request(APPLICATION_JSON_TYPE).get(newBean());
+
+            endTimer();
+
+            assertThat(returnedBean).isEqualTo(new OrderBean(
+                    inputOrder.getId(),
+                    inputOrder.getCustomerId(),
+                    OrderState.VALIDATED,
+                    inputOrder.getProduct(),
+                    inputOrder.getQuantity(),
+                    inputOrder.getPrice()
+            ));
+        }
     }
-  }
 
-  private GenericType<OrderBean> newBean() {
-    return new GenericType<OrderBean>() {
-    };
-  }
+    @Test
+    public void shouldProcessManyInvalidOrdersEndToEnd() throws Exception {
+        client = getClient();
+
+        //Add inventory required by the inventory service
+        List<KeyValue<Product, Integer>> inventory = asList(
+                new KeyValue<>(UNDERPANTS, 75000),
+                new KeyValue<>(JUMPERS, 0) //***nothing in stock***
+        );
+        sendInventory(inventory, Topics.WAREHOUSE_INVENTORY);
+
+        //Send ten orders one after the other
+        for (int i = 0; i < 10; i++) {
+            OrderBean inputOrder = new OrderBean(id(i), 2L, OrderState.CREATED, Product.JUMPERS, 1, 1d);
+
+            startTimer();
+
+            //POST & GET order
+            client.target(path.urlPost()).request(APPLICATION_JSON_TYPE).post(Entity.json(inputOrder));
+            returnedBean = client.target(path.urlGetValidated(i)).queryParam("timeout", MIN)
+                    .request(APPLICATION_JSON_TYPE).get(newBean());
+
+            endTimer();
+
+            assertThat(returnedBean).isEqualTo(new OrderBean(
+                    inputOrder.getId(),
+                    inputOrder.getCustomerId(),
+                    OrderState.FAILED,
+                    inputOrder.getProduct(),
+                    inputOrder.getQuantity(),
+                    inputOrder.getPrice()
+            ));
+        }
+    }
+
+    private Client getClient() {
+        final ClientConfig clientConfig = new ClientConfig();
+        clientConfig.property(ClientProperties.CONNECT_TIMEOUT, 60000)
+                .property(ClientProperties.READ_TIMEOUT, 60000);
+        return ClientBuilder.newClient(clientConfig);
+    }
+
+    private void startTimer() {
+        startTime = System.currentTimeMillis();
+    }
+
+    private void endTimer() {
+        log.info("Took: " + (System.currentTimeMillis() - startTime));
+    }
+
+    @Before
+    public void startEverythingElse() throws Exception {
+        if (!CLUSTER.isRunning()) {
+            CLUSTER.start();
+        }
+
+        Topics.ALL.keySet().forEach(CLUSTER::createTopic);
+        Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
+
+        services.add(new FraudService());
+        services.add(new InventoryService());
+        services.add(new OrderDetailsService());
+        services.add(new ValidationsAggregatorService());
+
+        tailAllTopicsToConsole(CLUSTER.bootstrapServers());
+        services.forEach(s -> s.start(CLUSTER.bootstrapServers()));
+
+        final OrdersService ordersService = new OrdersService(HOST, restPort);
+        ordersService.start(CLUSTER.bootstrapServers());
+        path = new Paths("localhost", ordersService.port());
+        services.add(ordersService);
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        services.forEach(Service::stop);
+        stopTailers();
+        CLUSTER.stop();
+        if (client != null) {
+            client.close();
+        }
+    }
+
+    private GenericType<OrderBean> newBean() {
+        return new GenericType<OrderBean>() {
+        };
+    }
 }

@@ -30,158 +30,158 @@ import static org.junit.Assert.fail;
 
 public class OrdersServiceTest extends MicroserviceTestUtils {
 
-  private OrdersService rest;
-  private OrdersService rest2;
+    private OrdersService rest;
+    private OrdersService rest2;
 
-  @BeforeClass
-  public static void startKafkaCluster() {
-    CLUSTER.createTopic(Topics.ORDERS.name());
-    Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
-  }
-
-  @After
-  public void shutdown() {
-    if (rest != null) {
-      rest.stop();
+    @BeforeClass
+    public static void startKafkaCluster() {
+        CLUSTER.createTopic(Topics.ORDERS.name());
+        Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
     }
-    if (rest2 != null) {
-      rest2.stop();
+
+    @After
+    public void shutdown() {
+        if (rest != null) {
+            rest.stop();
+        }
+        if (rest2 != null) {
+            rest2.stop();
+        }
     }
-  }
 
-  @Test
-  public void shouldPostOrderAndGetItBack() {
-    OrderBean bean = new OrderBean(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 10, 100d);
+    @Test
+    public void shouldPostOrderAndGetItBack() {
+        OrderBean bean = new OrderBean(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 10, 100d);
 
-    final Client client = ClientBuilder.newClient();
+        final Client client = ClientBuilder.newClient();
 
-    //Given a rest service
-    rest = new OrdersService("localhost");
-    rest.start(CLUSTER.bootstrapServers());
-    Paths paths = new Paths("localhost", rest.port());
+        //Given a rest service
+        rest = new OrdersService("localhost");
+        rest.start(CLUSTER.bootstrapServers());
+        Paths paths = new Paths("localhost", rest.port());
 
-    //When we POST an order
-    Response response = client.target(paths.urlPost())
-        .request(APPLICATION_JSON_TYPE)
-        .post(Entity.json(bean));
+        //When we POST an order
+        Response response = client.target(paths.urlPost())
+                .request(APPLICATION_JSON_TYPE)
+                .post(Entity.json(bean));
 
-    //Then
-    assertThat(response.getStatus()).isEqualTo(HttpURLConnection.HTTP_CREATED);
+        //Then
+        assertThat(response.getStatus()).isEqualTo(HttpURLConnection.HTTP_CREATED);
 
-    //When GET the bean back via it's location
-    OrderBean returnedBean = client.target(response.getLocation())
-        .queryParam("timeout", MIN / 2)
-        .request(APPLICATION_JSON_TYPE)
-        .get(new GenericType<OrderBean>() {
-        });
+        //When GET the bean back via it's location
+        OrderBean returnedBean = client.target(response.getLocation())
+                .queryParam("timeout", MIN / 2)
+                .request(APPLICATION_JSON_TYPE)
+                .get(new GenericType<OrderBean>() {
+                });
 
-    //Then it should be the bean we PUT
-    assertThat(returnedBean).isEqualTo(bean);
+        //Then it should be the bean we PUT
+        assertThat(returnedBean).isEqualTo(bean);
 
-    //When GET the bean back explicitly
-    returnedBean = client.target(paths.urlGet(1))
-        .queryParam("timeout", MIN / 2)
-        .request(APPLICATION_JSON_TYPE)
-        .get(new GenericType<OrderBean>() {
-        });
+        //When GET the bean back explicitly
+        returnedBean = client.target(paths.urlGet(1))
+                .queryParam("timeout", MIN / 2)
+                .request(APPLICATION_JSON_TYPE)
+                .get(new GenericType<OrderBean>() {
+                });
 
-    //Then it should be the bean we PUT
-    assertThat(returnedBean).isEqualTo(bean);
-  }
-
-
-  @Test
-  public void shouldGetValidatedOrderOnRequest() throws Exception {
-    Order orderV1 = new Order(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 10, 100d);
-    OrderBean beanV1 = OrderBean.toBean(orderV1);
-
-    final Client client = ClientBuilder.newClient();
-
-    //Given a rest service
-    rest = new OrdersService("localhost");
-    rest.start(CLUSTER.bootstrapServers());
-    Paths paths = new Paths("localhost", rest.port());
-
-    //When we post an order
-    client.target(paths.urlPost())
-        .request(APPLICATION_JSON_TYPE)
-        .post(Entity.json(beanV1));
-
-    //Simulate the order being validated
-    MicroserviceTestUtils.sendOrders(asList(
-        newBuilder(orderV1)
-            .setState(OrderState.VALIDATED)
-            .build()));
-
-    //When we GET the order from the returned location
-    OrderBean returnedBean = client.target(paths.urlGetValidated(beanV1.getId()))
-        .queryParam("timeout", MIN / 2)
-        .request(APPLICATION_JSON_TYPE)
-        .get(new GenericType<OrderBean>() {
-        });
-
-    //Then status should be Validated
-    assertThat(returnedBean.getState()).isEqualTo(OrderState.VALIDATED);
-  }
-
-  @Test
-  public void shouldTimeoutGetIfNoResponseIsFound() throws Exception {
-    final Client client = ClientBuilder.newClient();
-
-    //Start the rest interface
-    rest = new OrdersService("localhost");
-    rest.start(CLUSTER.bootstrapServers());
-    Paths paths = new Paths("localhost", rest.port());
-
-    //Then GET order should timeout
-    try {
-      client.target(paths.urlGet(1))
-          .queryParam("timeout", 100) //Lower the request timeout
-          .request(APPLICATION_JSON_TYPE)
-          .get(new GenericType<OrderBean>() {
-          });
-      fail("Request should have failed as materialized view has not been updated");
-    } catch (ServerErrorException e) {
-      assertThat(e.getMessage()).isEqualTo("HTTP 504 Gateway Timeout");
+        //Then it should be the bean we PUT
+        assertThat(returnedBean).isEqualTo(bean);
     }
-  }
 
-  @Test
-  public void shouldGetOrderByIdWhenOnDifferentHost() throws Exception {
-    OrderBean order = new OrderBean(id(1L), 2L, OrderState.VALIDATED, Product.JUMPERS, 10, 100d);
-    final Client client = ClientBuilder.newClient();
 
-    //Given two rest servers on different ports
-    rest = new OrdersService("localhost");
-    rest.start(CLUSTER.bootstrapServers());
-    Paths paths1 = new Paths("localhost", rest.port());
-    rest2 = new OrdersService("localhost");
-    rest2.start(CLUSTER.bootstrapServers());
-    Paths paths2 = new Paths("localhost", rest2.port());
+    @Test
+    public void shouldGetValidatedOrderOnRequest() throws Exception {
+        Order orderV1 = new Order(id(1L), 2L, OrderState.CREATED, Product.JUMPERS, 10, 100d);
+        OrderBean beanV1 = OrderBean.toBean(orderV1);
 
-    //And one order
-    client.target(paths1.urlPost())
-        .request(APPLICATION_JSON_TYPE)
-        .post(Entity.json(order));
+        final Client client = ClientBuilder.newClient();
 
-    //When GET to rest1
-    OrderBean returnedOrder = client.target(paths1.urlGet(order.getId()))
-        .queryParam("timeout", MIN / 2)
-        .request(APPLICATION_JSON_TYPE)
-        .get(new GenericType<OrderBean>() {
-        });
+        //Given a rest service
+        rest = new OrdersService("localhost");
+        rest.start(CLUSTER.bootstrapServers());
+        Paths paths = new Paths("localhost", rest.port());
 
-    //Then we should get the order back
-    assertThat(returnedOrder).isEqualTo(order);
+        //When we post an order
+        client.target(paths.urlPost())
+                .request(APPLICATION_JSON_TYPE)
+                .post(Entity.json(beanV1));
 
-    //When GET to rest2
-    returnedOrder = client.target(paths2.urlGet(order.getId()))
-        .queryParam("timeout", MIN / 2)
-        .request(APPLICATION_JSON_TYPE)
-        .get(new GenericType<OrderBean>() {
-        });
+        //Simulate the order being validated
+        MicroserviceTestUtils.sendOrders(asList(
+                newBuilder(orderV1)
+                        .setState(OrderState.VALIDATED)
+                        .build()));
 
-    //Then we should get the order back also
-    assertThat(returnedOrder).isEqualTo(order);
-  }
+        //When we GET the order from the returned location
+        OrderBean returnedBean = client.target(paths.urlGetValidated(beanV1.getId()))
+                .queryParam("timeout", MIN / 2)
+                .request(APPLICATION_JSON_TYPE)
+                .get(new GenericType<OrderBean>() {
+                });
+
+        //Then status should be Validated
+        assertThat(returnedBean.getState()).isEqualTo(OrderState.VALIDATED);
+    }
+
+    @Test
+    public void shouldTimeoutGetIfNoResponseIsFound() throws Exception {
+        final Client client = ClientBuilder.newClient();
+
+        //Start the rest interface
+        rest = new OrdersService("localhost");
+        rest.start(CLUSTER.bootstrapServers());
+        Paths paths = new Paths("localhost", rest.port());
+
+        //Then GET order should timeout
+        try {
+            client.target(paths.urlGet(1))
+                    .queryParam("timeout", 100) //Lower the request timeout
+                    .request(APPLICATION_JSON_TYPE)
+                    .get(new GenericType<OrderBean>() {
+                    });
+            fail("Request should have failed as materialized view has not been updated");
+        } catch (ServerErrorException e) {
+            assertThat(e.getMessage()).isEqualTo("HTTP 504 Gateway Timeout");
+        }
+    }
+
+    @Test
+    public void shouldGetOrderByIdWhenOnDifferentHost() throws Exception {
+        OrderBean order = new OrderBean(id(1L), 2L, OrderState.VALIDATED, Product.JUMPERS, 10, 100d);
+        final Client client = ClientBuilder.newClient();
+
+        //Given two rest servers on different ports
+        rest = new OrdersService("localhost");
+        rest.start(CLUSTER.bootstrapServers());
+        Paths paths1 = new Paths("localhost", rest.port());
+        rest2 = new OrdersService("localhost");
+        rest2.start(CLUSTER.bootstrapServers());
+        Paths paths2 = new Paths("localhost", rest2.port());
+
+        //And one order
+        client.target(paths1.urlPost())
+                .request(APPLICATION_JSON_TYPE)
+                .post(Entity.json(order));
+
+        //When GET to rest1
+        OrderBean returnedOrder = client.target(paths1.urlGet(order.getId()))
+                .queryParam("timeout", MIN / 2)
+                .request(APPLICATION_JSON_TYPE)
+                .get(new GenericType<OrderBean>() {
+                });
+
+        //Then we should get the order back
+        assertThat(returnedOrder).isEqualTo(order);
+
+        //When GET to rest2
+        returnedOrder = client.target(paths2.urlGet(order.getId()))
+                .queryParam("timeout", MIN / 2)
+                .request(APPLICATION_JSON_TYPE)
+                .get(new GenericType<OrderBean>() {
+                });
+
+        //Then we should get the order back also
+        assertThat(returnedOrder).isEqualTo(order);
+    }
 }

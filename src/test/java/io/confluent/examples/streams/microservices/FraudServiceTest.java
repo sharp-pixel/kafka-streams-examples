@@ -23,57 +23,57 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class FraudServiceTest extends MicroserviceTestUtils {
 
-  private FraudService fraudService;
+    private FraudService fraudService;
 
-  @BeforeClass
-  public static void startKafkaCluster() throws Exception {
-    if (!CLUSTER.isRunning()) {
-      CLUSTER.start();
+    @BeforeClass
+    public static void startKafkaCluster() throws Exception {
+        if (!CLUSTER.isRunning()) {
+            CLUSTER.start();
+        }
+
+        CLUSTER.createTopic(Topics.ORDERS.name());
+        CLUSTER.createTopic(Topics.ORDER_VALIDATIONS.name());
+        Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
     }
 
-    CLUSTER.createTopic(Topics.ORDERS.name());
-    CLUSTER.createTopic(Topics.ORDER_VALIDATIONS.name());
-    Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
-  }
+    @After
+    public void tearDown() {
+        fraudService.stop();
+        CLUSTER.stop();
+    }
 
-  @After
-  public void tearDown() {
-    fraudService.stop();
-    CLUSTER.stop();
-  }
+    @Test
+    public void shouldValidateWhetherOrderAmountExceedsFraudLimitOverWindow() throws Exception {
+        //Given
+        fraudService = new FraudService();
 
-  @Test
-  public void shouldValidateWhetherOrderAmountExceedsFraudLimitOverWindow() throws Exception {
-    //Given
-    fraudService = new FraudService();
+        List<Order> orders = asList(
+                new Order(id(0L), 0L, CREATED, UNDERPANTS, 3, 5.00d),
+                new Order(id(1L), 0L, CREATED, JUMPERS, 1, 75.00d),
+                new Order(id(2L), 1L, CREATED, JUMPERS, 1, 75.00d),
+                new Order(id(3L), 1L, CREATED, JUMPERS, 1, 75.00d),
+                new Order(id(4L), 1L, CREATED, JUMPERS, 50, 75.00d),    //Should fail as over limit
+                new Order(id(5L), 2L, CREATED, UNDERPANTS, 10, 100.00d),//First should pass
+                new Order(id(6L), 2L, CREATED, UNDERPANTS, 10, 100.00d),//Second should fail as rolling total by customer is over limit
+                new Order(id(7L), 2L, CREATED, UNDERPANTS, 1, 5.00d)    //Third should fail as rolling total by customer is still over limit
+        );
+        sendOrders(orders);
 
-    List<Order> orders = asList(
-        new Order(id(0L), 0L, CREATED, UNDERPANTS, 3, 5.00d),
-        new Order(id(1L), 0L, CREATED, JUMPERS, 1, 75.00d),
-        new Order(id(2L), 1L, CREATED, JUMPERS, 1, 75.00d),
-        new Order(id(3L), 1L, CREATED, JUMPERS, 1, 75.00d),
-        new Order(id(4L), 1L, CREATED, JUMPERS, 50, 75.00d),    //Should fail as over limit
-        new Order(id(5L), 2L, CREATED, UNDERPANTS, 10, 100.00d),//First should pass
-        new Order(id(6L), 2L, CREATED, UNDERPANTS, 10, 100.00d),//Second should fail as rolling total by customer is over limit
-        new Order(id(7L), 2L, CREATED, UNDERPANTS, 1, 5.00d)    //Third should fail as rolling total by customer is still over limit
-    );
-    sendOrders(orders);
+        //When
+        fraudService.start(CLUSTER.bootstrapServers());
 
-    //When
-    fraudService.start(CLUSTER.bootstrapServers());
-
-    //Then there should be failures for the two orders that push customers over their limit.
-    List<OrderValidation> expected = asList(
-        new OrderValidation(id(0L), FRAUD_CHECK, PASS),
-        new OrderValidation(id(1L), FRAUD_CHECK, PASS),
-        new OrderValidation(id(2L), FRAUD_CHECK, PASS),
-        new OrderValidation(id(3L), FRAUD_CHECK, PASS),
-        new OrderValidation(id(4L), FRAUD_CHECK, FAIL),
-        new OrderValidation(id(5L), FRAUD_CHECK, PASS),
-        new OrderValidation(id(6L), FRAUD_CHECK, FAIL),
-        new OrderValidation(id(7L), FRAUD_CHECK, FAIL)
-    );
-    List<OrderValidation> read = read(Topics.ORDER_VALIDATIONS, 8, CLUSTER.bootstrapServers());
-    assertThat(read).isEqualTo(expected);
-  }
+        //Then there should be failures for the two orders that push customers over their limit.
+        List<OrderValidation> expected = asList(
+                new OrderValidation(id(0L), FRAUD_CHECK, PASS),
+                new OrderValidation(id(1L), FRAUD_CHECK, PASS),
+                new OrderValidation(id(2L), FRAUD_CHECK, PASS),
+                new OrderValidation(id(3L), FRAUD_CHECK, PASS),
+                new OrderValidation(id(4L), FRAUD_CHECK, FAIL),
+                new OrderValidation(id(5L), FRAUD_CHECK, PASS),
+                new OrderValidation(id(6L), FRAUD_CHECK, FAIL),
+                new OrderValidation(id(7L), FRAUD_CHECK, FAIL)
+        );
+        List<OrderValidation> read = read(Topics.ORDER_VALIDATIONS, 8, CLUSTER.bootstrapServers());
+        assertThat(read).isEqualTo(expected);
+    }
 }

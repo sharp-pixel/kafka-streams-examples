@@ -19,51 +19,51 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class EmailServiceTest extends MicroserviceTestUtils {
 
-  private EmailService emailService;
-  private volatile boolean complete;
+    private EmailService emailService;
+    private volatile boolean complete;
 
-  @BeforeClass
-  public static void startKafkaCluster() throws Exception {
-    if (!CLUSTER.isRunning()) {
-      CLUSTER.start();
+    @BeforeClass
+    public static void startKafkaCluster() throws Exception {
+        if (!CLUSTER.isRunning()) {
+            CLUSTER.start();
+        }
+
+        CLUSTER.createTopic(Topics.ORDERS.name());
+        CLUSTER.createTopic(Topics.CUSTOMERS.name());
+        CLUSTER.createTopic(Topics.PAYMENTS.name());
+        Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
     }
 
-    CLUSTER.createTopic(Topics.ORDERS.name());
-    CLUSTER.createTopic(Topics.CUSTOMERS.name());
-    CLUSTER.createTopic(Topics.PAYMENTS.name());
-    Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
-  }
+    @After
+    public void tearDown() {
+        emailService.stop();
+        CLUSTER.stop();
+    }
 
-  @After
-  public void tearDown() {
-    emailService.stop();
-    CLUSTER.stop();
-  }
+    @Test
+    public void shouldSendEmailWithValidContents() throws Exception {
 
-  @Test
-  public void shouldSendEmailWithValidContents() throws Exception {
+        //Given one order, customer and payment
+        String orderId = id(0L);
+        Order order = new Order(orderId, 15L, CREATED, UNDERPANTS, 3, 5.00d);
+        Customer customer = new Customer(15L, "Franz", "Kafka", "frans@thedarkside.net", "oppression street, prague, cze");
+        Payment payment = new Payment("Payment:1234", orderId, "CZK", 1000.00d);
 
-    //Given one order, customer and payment
-    String orderId = id(0L);
-    Order order = new Order(orderId, 15L, CREATED, UNDERPANTS, 3, 5.00d);
-    Customer customer = new Customer(15L, "Franz", "Kafka", "frans@thedarkside.net", "oppression street, prague, cze");
-    Payment payment = new Payment("Payment:1234", orderId, "CZK", 1000.00d);
+        emailService = new EmailService(details -> {
+            assertThat(details.customer).isEqualTo(customer);
+            assertThat(details.payment).isEqualTo(payment);
+            assertThat(details.order).isEqualTo(order);
+            complete = true;
+        });
 
-    emailService = new EmailService(details -> {
-      assertThat(details.customer).isEqualTo(customer);
-      assertThat(details.payment).isEqualTo(payment);
-      assertThat(details.order).isEqualTo(order);
-      complete = true;
-    });
+        send(Topics.CUSTOMERS, new KeyValue<>(customer.getId(), customer));
+        send(Topics.ORDERS, new KeyValue<>(order.getId(), order));
+        send(Topics.PAYMENTS, new KeyValue<>(payment.getId(), payment));
 
-    send(Topics.CUSTOMERS, new KeyValue<>(customer.getId(), customer));
-    send(Topics.ORDERS, new KeyValue<>(order.getId(), order));
-    send(Topics.PAYMENTS, new KeyValue<>(payment.getId(), payment));
+        //When
+        emailService.start(CLUSTER.bootstrapServers());
 
-    //When
-    emailService.start(CLUSTER.bootstrapServers());
-
-    //Then
-    TestUtils.waitForCondition(() -> complete, "Email was never sent.");
-  }
+        //Then
+        TestUtils.waitForCondition(() -> complete, "Email was never sent.");
+    }
 }

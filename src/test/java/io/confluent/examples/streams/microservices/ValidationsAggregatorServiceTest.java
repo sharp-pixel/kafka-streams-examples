@@ -16,8 +16,10 @@ import io.confluent.examples.streams.avro.microservices.OrderValidationType;
 import io.confluent.examples.streams.microservices.domain.Schemas;
 import io.confluent.examples.streams.microservices.domain.Schemas.Topics;
 import io.confluent.examples.streams.microservices.util.MicroserviceTestUtils;
+
 import java.util.List;
 import java.util.stream.Collectors;
+
 import org.apache.kafka.streams.KeyValue;
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -25,58 +27,58 @@ import org.junit.Test;
 
 public class ValidationsAggregatorServiceTest extends MicroserviceTestUtils {
 
-  private List<Order> orders;
-  private List<OrderValidation> ruleResults;
-  private ValidationsAggregatorService ordersService;
+    private List<Order> orders;
+    private List<OrderValidation> ruleResults;
+    private ValidationsAggregatorService ordersService;
 
 
-  @BeforeClass
-  public static void startKafkaCluster() throws Exception {
-    CLUSTER.createTopic(Topics.ORDERS.name());
-    CLUSTER.createTopic(Topics.ORDER_VALIDATIONS.name());
-    Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
-    MicroserviceTestUtils.tailAllTopicsToConsole(CLUSTER.bootstrapServers());
-  }
+    @BeforeClass
+    public static void startKafkaCluster() throws Exception {
+        CLUSTER.createTopic(Topics.ORDERS.name());
+        CLUSTER.createTopic(Topics.ORDER_VALIDATIONS.name());
+        Schemas.configureSerdesWithSchemaRegistryUrl(CLUSTER.schemaRegistryUrl());
+        MicroserviceTestUtils.tailAllTopicsToConsole(CLUSTER.bootstrapServers());
+    }
 
-  @Test
-  public void shouldAggregateRuleSuccesses() throws Exception {
+    @Test
+    public void shouldAggregateRuleSuccesses() throws Exception {
 
-    //Given
-    ordersService = new ValidationsAggregatorService();
+        //Given
+        ordersService = new ValidationsAggregatorService();
 
-    orders = asList(
-        new Order(id(0L), 0L, CREATED, UNDERPANTS, 3, 5.00d),
-        new Order(id(1L), 0L, CREATED, JUMPERS, 1, 75.00d)
-    );
-    sendOrders(orders);
+        orders = asList(
+                new Order(id(0L), 0L, CREATED, UNDERPANTS, 3, 5.00d),
+                new Order(id(1L), 0L, CREATED, JUMPERS, 1, 75.00d)
+        );
+        sendOrders(orders);
 
-    ruleResults = asList(
-        new OrderValidation(id(0L), OrderValidationType.FRAUD_CHECK, OrderValidationResult.PASS),
-        new OrderValidation(id(0L), OrderValidationType.ORDER_DETAILS_CHECK, OrderValidationResult.PASS),
-        new OrderValidation(id(0L), OrderValidationType.INVENTORY_CHECK, OrderValidationResult.PASS),
-        new OrderValidation(id(1L), OrderValidationType.FRAUD_CHECK, OrderValidationResult.PASS),
-        new OrderValidation(id(1L), OrderValidationType.ORDER_DETAILS_CHECK, OrderValidationResult.FAIL),
-        new OrderValidation(id(1L), OrderValidationType.INVENTORY_CHECK, OrderValidationResult.PASS)
-    );
-    sendOrderValuations(ruleResults);
+        ruleResults = asList(
+                new OrderValidation(id(0L), OrderValidationType.FRAUD_CHECK, OrderValidationResult.PASS),
+                new OrderValidation(id(0L), OrderValidationType.ORDER_DETAILS_CHECK, OrderValidationResult.PASS),
+                new OrderValidation(id(0L), OrderValidationType.INVENTORY_CHECK, OrderValidationResult.PASS),
+                new OrderValidation(id(1L), OrderValidationType.FRAUD_CHECK, OrderValidationResult.PASS),
+                new OrderValidation(id(1L), OrderValidationType.ORDER_DETAILS_CHECK, OrderValidationResult.FAIL),
+                new OrderValidation(id(1L), OrderValidationType.INVENTORY_CHECK, OrderValidationResult.PASS)
+        );
+        sendOrderValuations(ruleResults);
 
-    //When
-    ordersService.start(CLUSTER.bootstrapServers());
+        //When
+        ordersService.start(CLUSTER.bootstrapServers());
 
-    //Then
-    List<KeyValue<String, Order>> finalOrders = MicroserviceTestUtils
-        .readKeyValues(Topics.ORDERS, 4, CLUSTER.bootstrapServers());
-    assertThat(finalOrders.size()).isEqualTo(4);
+        //Then
+        List<KeyValue<String, Order>> finalOrders = MicroserviceTestUtils
+                .readKeyValues(Topics.ORDERS, 4, CLUSTER.bootstrapServers());
+        assertThat(finalOrders.size()).isEqualTo(4);
 
-    //And the first order should have been validated but the second should have failed
-    assertThat(finalOrders.stream().map(kv -> kv.value).collect(Collectors.toList())).contains(
-        new Order(id(0L), 0L, VALIDATED, UNDERPANTS, 3, 5.00d),
-        new Order(id(1L), 0L, FAILED, JUMPERS, 1, 75.00d)
-    );
-  }
+        //And the first order should have been validated but the second should have failed
+        assertThat(finalOrders.stream().map(kv -> kv.value).collect(Collectors.toList())).contains(
+                new Order(id(0L), 0L, VALIDATED, UNDERPANTS, 3, 5.00d),
+                new Order(id(1L), 0L, FAILED, JUMPERS, 1, 75.00d)
+        );
+    }
 
-  @After
-  public void tearDown() {
-    ordersService.stop();
-  }
+    @After
+    public void tearDown() {
+        ordersService.stop();
+    }
 }
